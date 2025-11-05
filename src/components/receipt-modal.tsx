@@ -10,7 +10,7 @@ export default function ReceiptModal({ receipt, onClose }: any) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div
-        className="bg-white p-8 rounded-2xl shadow-lg w-[520px] text-black text-sm font-mono"
+        className="bg-white p-8 rounded-2xl shadow-lg w-[650px] text-black text-sm font-mono"
         id="printable-receipt"
       >
         {/* Header */}
@@ -58,6 +58,7 @@ export default function ReceiptModal({ receipt, onClose }: any) {
               <th className="text-left">Item</th>
               <th className="text-center">Qty</th>
               <th className="text-right">Price</th>
+               <th className="text-right">Total</th>
             </tr>
           </thead>
           <tbody>
@@ -65,6 +66,7 @@ export default function ReceiptModal({ receipt, onClose }: any) {
               <tr key={i}>
                 <td>{item.name}</td>
                 <td className="text-center">{item.quantity}</td>
+                <td className="text-right">₦{(item.price).toLocaleString()}</td>
                 <td className="text-right">
                   ₦{(item.price * item.quantity).toLocaleString()}
                 </td>
@@ -144,8 +146,8 @@ export default function ReceiptModal({ receipt, onClose }: any) {
 
     #printable-receipt {
       
-      width: 70%;
-      transform: scale(1.4); /* Increase overall print size */
+      width: 90%;
+      transform: scale(1); /* Increase overall print size */
       transform-origin: top left;
       font-size: 18px !important; /* Make text bigger */
       padding: 30px !important;

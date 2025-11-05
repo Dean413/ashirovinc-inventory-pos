@@ -41,6 +41,8 @@ const [products, setProducts] = useState<Product[]>([]);
 const [cart, setCart] = useState<CartItem[]>([]);
 const [toast, setToast] = useState<Toast | null>(null);
 const [productInput, setProductInput] = useState<string>("");
+const [selectedProduct, setSelectedProduct] = useState<any>(null);
+
 
   // Fetch products
   useEffect(() => {
@@ -146,9 +148,11 @@ useEffect(() => {
     showToast("Item removed", "success");
   };
 
+
   const totalSum = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
   const handlePay = async () => {
+
   if (!cart.length) return showToast("No item Selected", "error");
   if (!merchant) return showToast("Select a seller", "error");
   if (!customers) return showToast("Select a customer", "error");
@@ -158,6 +162,7 @@ useEffect(() => {
 
   try {
     const total = totalSum - discount;
+    const subtotal = totalSum
 
     // 1️⃣ Create sale record
     const { data: sale, error: saleError } = await supabase
@@ -167,6 +172,7 @@ useEffect(() => {
           customer_name: customers.label,
           merchant_name: merchant.label,
           total,
+          subtotal,
           discount,
           date: new Date().toISOString(),
         },
@@ -177,11 +183,23 @@ useEffect(() => {
     if (saleError) throw saleError;
 
     // 2️⃣ Insert each sold item into sale_items table & update stock
-    for (const item of cart) {
+   for (const item of cart) {
+    // Prevent selling if any product has no stock
+for (const item of cart) {
+  if (item.stock <= 0) {
+    showToast(`${item.name} is out of stock`, "error");
+    return;
+  }
+  if (item.quantity > item.stock) {
+    showToast(`Insufficient stock for ${item.name}`, "error");
+    return;
+  }
+}
+
   const { error: itemError } = await supabase.from("sale_items").insert([
     {
       sale_id: sale.id,
-      product_id: item.id, // Ensure this type matches table column
+      product_id: item.id,
       product_name: item.name,
       quantity: item.quantity,
       unit_price: item.price,
@@ -189,15 +207,23 @@ useEffect(() => {
     },
   ]);
   if (itemError) console.error("Sale item insert failed:", itemError);
+}
 
-    
+// ✅ Update stock once for all items
+await fetch("/api/update-stock", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ cartItems: cart }),
+});
 
-      // Deduct from stock
-      await supaBase
-        .from("products")
-        .update({ stock: item.stock - item.quantity })
-        .eq("id", item.id);
-    }
+
+    const fetchProducts = async () => {
+      const { data, error } = await supaBase.from("products").select("*");
+      if (data && !error) setProducts(data as Product[]);
+    };
+    fetchProducts();
+  ;
+
 
     // 3️⃣ Create receipt object
     const receiptData = {
@@ -210,7 +236,14 @@ useEffect(() => {
       date: new Date().toLocaleString(),
     };
 
+    
+
     setReceipt(receiptData);
+    setCustomer(null)
+    setProductInput("")
+    setMerchant(null)
+    setSelectedProduct("")
+    setDiscount(0)
     setCart([]);
     showToast("Payment successful", "success");
   } catch (error: any) {
@@ -237,6 +270,7 @@ useEffect(() => {
           </label>
           <Select
             placeholder="Select a Customer"
+            isClearable
             value={customers}
            onChange={(option) => setCustomer(option as { label: string; value: string } | null)}
            options={[{ value: "walk-in", label: "Walk-in Customer" }, ...customerOptions]}
@@ -249,6 +283,8 @@ useEffect(() => {
           <label className="font-semibold mb-1 block">Products</label>
           <AsyncSelect
             placeholder="Search or select a Product"
+            isClearable
+            value={selectedProduct}
             inputValue={productInput}
             onInputChange={(val, { action }) => {
               if (action === "input-change") setProductInput(val);
@@ -256,6 +292,7 @@ useEffect(() => {
             }}
             onChange={(selected) => {
               handleSelectProduct(selected);
+              setSelectedProduct(selected)
               setProductInput("");
             }}
             loadOptions={loadOptions}
@@ -282,11 +319,12 @@ useEffect(() => {
         <div className="flex-1 min-w-[200px] max-w-[250px]">
          <label className="font-semibold mb-1 block">
             Merchant{" "}
-            <span onClick={()=> setShowAddMerchant(true)} className="ml-3 underline cursor-pointer text-blue-500 text-sm">
+            <span onClick={()=> setShowAddMerchant(true)} className="ml-16 underline cursor-pointer text-blue-500 text-sm">
               Add Merchant
             </span>
           </label>
           <Select
+            isClearable
             placeholder="Select a Merchant"
             value={merchant}
             onChange={(option) => setMerchant(option as { label: string; value: string } | null)}
@@ -311,9 +349,9 @@ useEffect(() => {
           <tbody>
             {cart.map((item) => (
               <tr key={item.id} className="hover:bg-gray-50">
-                <td className="p-2 border">{item.name}</td>
-                <td className="p-2 border">₦{item.price.toLocaleString()}</td>
-                <td className="p-2 border text-center">
+                <td className="p-2 border-gray-300">{item.name}</td>
+                <td className="p-2 border-gray-300 border-x text-center">₦{item.price.toLocaleString()}</td>
+                <td className="p-2 border-gray-100 text-center">
                   <input
                     type="number"
                     min="1"
@@ -322,13 +360,13 @@ useEffect(() => {
                     onChange={(e) =>
                       handleQuantityChange(item.id, Number(e.target.value))
                     }
-                    className="w-16 border rounded text-center"
+                    className="w-16 border-gray-100 rounded text-center"
                   />
                 </td>
-                <td className="p-2 border text-center">
+                <td className="p-2 border-gray-300 border-x text-center">
                   ₦{(item.price * item.quantity).toLocaleString()}
                 </td>
-                <td className="p-2 border text-center">
+                <td className="p-2 border-gray-100 text-center">
                   <button
                     onClick={() => handleRemove(item.id)}
                     className="text-red-700"
@@ -358,6 +396,7 @@ useEffect(() => {
       <h3 className="text-black font-bold">
         Discount (-):{" "}
         <input
+          value={discount ?? 0}
           type="number"
           placeholder="0"
           min="0"
