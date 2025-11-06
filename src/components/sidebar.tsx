@@ -4,15 +4,12 @@ import { usePathname } from "next/navigation";
 
 const links = [
   { name: "Dashboard", href: "/dashboard" },
-  { name: "Inventory", href: "/dashboard/inventory" },
   { name: "Sales", href: "/dashboard/sales" },
-  { name: "Reports", href: "/dashboard/reports" },
+  { name: "Inventory", href: "/dashboard/inventory" },
   { name: "Gen Record", href: "/dashboard/gen-record" },
-  { name: "WIP", href: "/dashboard/work-in-progress" },
-  { name: "Job Done", href: "/dashboard/job-done" },
-  { name: "Delivered", href: "/dashboard/delivered" },
-  { name: "Debtors", href: "/dashboard/debtors" },
-  { name: "Vendors", href: "/dashboard/vendors" },
+  { name: "Reports", href: "/dashboard/reports" },
+ 
+ 
 ];
 
 export default function Sidebar() {

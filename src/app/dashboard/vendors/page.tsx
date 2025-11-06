@@ -1,7 +1,8 @@
 "use client";
-
 import React, { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseclient";
+import Select from "react-select"
+import FullPageLoader from "@/components/page-reloader";
 
 interface Record {
   id: number;
@@ -11,6 +12,7 @@ interface Record {
   description: string;
   date_in: string;
   product_name: string;
+  category: string;
 }
 
 interface Payment {
@@ -28,6 +30,9 @@ export default function VendorsPage() {
   const [selectedVendor, setSelectedVendor] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string>("");
+
+  const [vendorOptions, setVendorOptions] = useState<{ value: string; label: string }[]>([]);
 
   // Payment Form State
   const [paymentForm, setPaymentForm] = useState({
@@ -52,7 +57,7 @@ export default function VendorsPage() {
     const { data, error } = await supabase
       .from("general_record")
       .select(
-        "id, customer_name, quantity, service_charge, description, date_in, product_name"
+        "id, customer_name, quantity, service_charge, description, date_in, product_name, category"
       )
       .or("description.ilike.%GOODS IN%,description.ilike.%GOODS OUT%")
       .order("id", { ascending: true });
@@ -66,6 +71,22 @@ export default function VendorsPage() {
     setRecords(data as Record[]);
     setLoading(false);
   };
+
+  useEffect(() => {
+    const fetchVendor = async () => {
+      const { data, error } = await supabase.from("general_record").select("id, customer_name");
+      if (error) console.error(error);
+      else {
+        setVendorOptions(
+          data.map((c) => ({
+            value: c.id,
+            label: c.customer_name,
+          }))
+        );
+      }
+    };
+    fetchVendor();
+  }, []); 
 
   // Fetch vendor payments
   const fetchPayments = async () => {
@@ -140,11 +161,22 @@ export default function VendorsPage() {
     new Set(records.map((r) => r.customer_name))
   ).filter(Boolean);
 
-  const filteredRecords = selectedVendor
-    ? records.filter(
-        (r) => r.customer_name?.toLowerCase() === selectedVendor.toLowerCase()
-      )
-    : records;
+  const uniqueCategories = Array.from(
+  new Set(records.map((r) => r.category))
+).filter(Boolean);
+
+  const filteredRecords = records.filter((r) => {
+  const matchVendor = selectedVendor
+    ? r.customer_name?.toLowerCase() === selectedVendor.toLowerCase()
+    : true;
+
+  const matchCategory = selectedCategory
+    ? r.category?.toLowerCase() === selectedCategory.toLowerCase()
+    : true;
+
+  return matchVendor && matchCategory;
+});
+
 
   const goodsIn = filteredRecords.filter((r) =>
     r.description?.toUpperCase().includes("GOODS IN")
@@ -232,30 +264,60 @@ const handleDeletePayment = async (id: number) => {
 
 
 
-  if (loading) return <p className="p-6">Loading vendors data...</p>;
+  if (loading) return <FullPageLoader text="Loading sales data..." />;
 
   return (
     <div className="p-6 text-black">
       <h1 className="text-2xl font-semibold mb-6">Vendor Transactions Dashboard</h1>
-
-      {/* Vendor Filter */}
+      
       <div className="mb-6 flex flex-col md:flex-row md:items-center gap-4">
-        <div>
-          <label className="text-sm font-medium mr-2">Select Vendor:</label>
-          <select
-            value={selectedVendor}
-            onChange={(e) => setSelectedVendor(e.target.value)}
-            className="border border-gray-300 px-3 py-2 rounded-md"
-          >
-            <option value="">All Vendors</option>
-            {uniqueVendors.map((vendor) => (
-              <option key={vendor} value={vendor}>
-                {vendor}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+  {/* Vendor select */}
+  <div className="w-full md:w-1/2">
+    <label className="text-sm font-medium block mb-2">Select Vendor:</label>
+    <Select
+      isClearable
+      isSearchable
+      placeholder="Select a Vendor"
+      value={
+        selectedVendor
+          ? { value: selectedVendor, label: selectedVendor }
+          : null
+      }
+      onChange={(option: any) => setSelectedVendor(option ? option.value : "")}
+      options={uniqueVendors.map((vendor) => ({
+        value: vendor,
+        label: vendor,
+      }))}
+      classNamePrefix="react-select"
+    />
+  </div>
+
+  {/* Category select */}
+  <div className="w-full md:w-1/2">
+    <label className="text-sm font-medium block mb-2">Select Category:</label>
+    <Select
+      isClearable
+      isSearchable
+      placeholder="Select a Category"
+      value={
+        selectedCategory
+          ? { value: selectedCategory, label: selectedCategory }
+          : null
+      }
+      onChange={(option: any) =>
+        setSelectedCategory(option ? option.value : "")
+      }
+      options={uniqueCategories.map((cat) => ({
+        value: cat,
+        label: cat,
+      }))}
+      classNamePrefix="react-select"
+    />
+  </div>
+</div>
+
+  
+
 
       {/* Summary Section */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 mb-8">
@@ -382,6 +444,7 @@ const handleDeletePayment = async (id: number) => {
                 <tr>
                   <th className="border border-gray-300 px-3 py-2 text-left">Date</th>
                   <th className="border border-gray-300 px-3 py-2 text-left">Product</th>
+                     <th className="border border-gray-300 px-3 py-2 text-left">Category</th>
                   <th className="border border-gray-300 px-3 py-2 text-left">Vendor</th>
                   <th className="border border-gray-300 px-3 py-2 text-right">Qty</th>
                   <th className="border border-gray-300 px-3 py-2 text-right">Cost (₦)</th>
@@ -394,6 +457,7 @@ const handleDeletePayment = async (id: number) => {
                     <tr key={item.id} className="hover:bg-gray-50">
                       <td className="border border-gray-300 px-3 py-2 wrap-break-word">{item.date_in}</td>
                       <td className="border border-gray-300 px-3 py-2 wrap-break-word">{item.product_name}</td>
+                      <td className="border border-gray-300 px-3 py-2 wrap-break-word">{item.category}</td>
                       <td className="border border-gray-300 px-3 py-2 wrap-break-word">{item.customer_name}</td>
                       <td className="border border-gray-300 px-3 py-2 text-right">{item.quantity}</td>
                       <td className="border border-gray-300 px-3 py-2 text-right">
@@ -425,6 +489,7 @@ const handleDeletePayment = async (id: number) => {
                 <tr>
                   <th className="border border-gray-300 px-3 py-2 text-left">Date</th>
                   <th className="border border-gray-300 px-3 py-2 text-left">Product</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left">Category</th>
                   <th className="border border-gray-300 px-3 py-2 text-left">Vendor</th>
                   <th className="border border-gray-300 px-3 py-2 text-right">Qty</th>
                   <th className="border border-gray-300 px-3 py-2 text-right">Cost (₦)</th>
@@ -437,6 +502,7 @@ const handleDeletePayment = async (id: number) => {
                     <tr key={item.id} className="hover:bg-gray-50">
                       <td className="border border-gray-300 px-3 py-2 wrap-break-word">{item.date_in}</td>
                       <td className="border border-gray-300 px-3 py-2 wrap-break-word">{item.product_name}</td>
+                      <td className="border border-gray-300 px-3 py-2 wrap-break-word">{item.category}</td>
                       <td className="border border-gray-300 px-3 py-2 wrap-break-word">{item.customer_name}</td>
                       <td className="border border-gray-300 px-3 py-2 text-right">{item.quantity}</td>
                       <td className="border border-gray-300 px-3 py-2 text-right">

@@ -56,4 +56,17 @@ body {
   margin: 10mm;
 }
 
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin-slow {
+  animation: spin-slow 3s linear infinite; /* Adjust 3s for speed */
+}
+
 

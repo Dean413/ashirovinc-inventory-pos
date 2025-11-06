@@ -1,5 +1,4 @@
 "use client";
-
 import { useState, useEffect } from "react";
 import { toast } from "react-toastify";
 
@@ -17,6 +16,7 @@ interface Product {
   display?: string;
   ram?: string;
   storage?: string;
+  category?: string;
 }
 
 interface ProductFormProps {
@@ -30,6 +30,7 @@ export default function ProductForm({ fetchProducts, editProduct, clearEdit }: P
 
   const [form, setForm] = useState<Product>({
     name: "",
+    category: "",
     brand: "",
     supplier_name: "",
     cost_price: 0,
@@ -128,6 +129,7 @@ export default function ProductForm({ fetchProducts, editProduct, clearEdit }: P
       // Reset form
       setForm({
         name: "",
+        category: "",
         brand: "",
         cost_price: undefined,
         supplier_name: "",
@@ -157,6 +159,14 @@ export default function ProductForm({ fetchProducts, editProduct, clearEdit }: P
         placeholder="Product Name"
         value={form.name}
         onChange={(e) => setForm({ ...form, name: e.target.value })}
+        className="border px-2 py-1 rounded"
+      />
+      
+      <input
+        type="text"
+        placeholder="Category"
+        value={form.category}
+        onChange={(e) => setForm({ ...form, category: e.target.value })}
         className="border px-2 py-1 rounded"
       />
       <input

@@ -340,7 +340,7 @@ await fetch("/api/update-stock", {
           <thead>
             <tr className="bg-gray-200 text-left">
               <th className="p-2">Product</th>
-              <th className="p-2">Price</th>
+              <th className="p-2 text-center">Price</th>
               <th className="p-2 text-center">Quantity</th>
               <th className="p-2 text-center">Subtotal</th>
               <th className="p-2 text-center">X</th>

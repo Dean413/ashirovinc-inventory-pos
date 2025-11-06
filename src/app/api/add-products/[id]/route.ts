@@ -10,10 +10,10 @@ export async function PATCH(
     const { id } = await context.params;
 
     const body = await req.json();
-    const { name, brand, price, cost_price, supplier_name, stock, image_url, description, display, ram, storage, processor } = body;
+    const { name, brand, price, cost_price, supplier_name, stock, image_url, description, display, ram, storage, processor, category } = body;
 
     const updates: Record<string, any> = {
-      brand, price, stock, image_url, cost_price, supplier_name, description, display, ram, storage, processor
+      brand, price, stock, image_url, cost_price, supplier_name, description, display, ram, storage, processor, category
     };
     if (name) updates.name = name;
 
