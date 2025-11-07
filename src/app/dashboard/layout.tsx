@@ -3,7 +3,6 @@ import { useRouter, usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { supabase } from "@/lib/supabaseclient";
 import Sidebar from "@/components/sidebar";
-import Dashboard from "@/components/dashboard-card";
 import Navbar from "@/components/navbar";
 
 

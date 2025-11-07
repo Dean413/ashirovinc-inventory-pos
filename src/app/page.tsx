@@ -1,9 +1,8 @@
-const page = () => {
-  return ( 
-    <div>
-      <h1>this is it</h1>
-    </div>
-   );
+"use client";
+
+import { redirect } from "next/navigation";
+
+export default function HomePage() {
+  // Automatically redirect to dashboard
+  redirect("/dashboard");
 }
- 
-export default page;
