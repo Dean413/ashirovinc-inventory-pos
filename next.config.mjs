@@ -1,4 +1,7 @@
-const withPWA = require("next-pwa")({
+// next.config.mjs
+import withPWA from "next-pwa";
+
+const nextConfig = withPWA({
   dest: "public",
   register: true,
   skipWaiting: true,
@@ -17,12 +20,9 @@ const withPWA = require("next-pwa")({
       },
     },
     {
-      // 🔹 Cache static Next.js assets (JS, CSS, fonts, etc.)
+      // 🔹 Cache static Next.js assets (JS, CSS, fonts, images)
       urlPattern: ({ request }) =>
-        request.destination === "script" ||
-        request.destination === "style" ||
-        request.destination === "font" ||
-        request.destination === "image",
+        ["script", "style", "font", "image"].includes(request.destination),
       handler: "CacheFirst",
       options: {
         cacheName: "static-assets",
@@ -30,7 +30,7 @@ const withPWA = require("next-pwa")({
       },
     },
     {
-      // 🔹 Cache HTML/navigation requests (Next.js pages)
+      // 🔹 Cache HTML/navigation requests
       urlPattern: ({ request }) => request.mode === "navigate",
       handler: "NetworkFirst",
       options: {
@@ -40,8 +40,8 @@ const withPWA = require("next-pwa")({
       },
     },
   ],
-});
 
-module.exports = withPWA({
   reactStrictMode: true,
 });
+
+export default nextConfig;
