@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css"; // ✅ Make sure toast styles are imported
+import ReactQueryProvider from "@/components/query-provider";
 
 
 const geistSans = Geist({
@@ -16,10 +17,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "Stock-Pilot",
+  title: "Inventory",
   description: "Offline-ready inventory management app",
   manifest: "/manifest.json",
-  themeColor: "#0d6efd",
+};
+
+export const viewport = {
+  themeColor: "#1E3A8A",
 };
 
 
@@ -34,7 +38,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <ToastContainer position="top-right" autoClose={3000} />
-        {children}
+        <ReactQueryProvider>{children}</ReactQueryProvider>
       </body>
     </html>
   );

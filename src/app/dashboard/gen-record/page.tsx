@@ -7,9 +7,13 @@ import FullPageLoader from "@/components/page-reloader";
 import Swal from "sweetalert2";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { FiRefreshCcw as Fi, FiRefreshCw } from "react-icons/fi";
+ 
 
 
 export default function ServicesSpreadsheet() {
+  const queryClient = useQueryClient();
   const headers = [
     "Date In",
     "Product",
@@ -40,27 +44,41 @@ export default function ServicesSpreadsheet() {
   const [rows, setRows] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [merchants, setMerchants] = useState<any[]>([]);
+  const [savingId, setSavingId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
 
-  // 🧩 Fetch initial data
-  const fetchGenRecord = async () => {
-    const { data, error } = await supabase
-      .from("general_record")
-      .select("*")
-      .order("id");
 
-    if (error) {
-      console.error("Error fetching general_record:", error.message);
-    } else {
-      setRows(data);
-    }
+  const {
+    data,
+    error,
+    isLoading,
+    isFetching,
+    refetch,
+  } = useQuery({
+    queryKey: ["general-records"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("general_record")
+        .select("*")
+        .order("id");
 
-    setLoading(false);
-  };
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 1000 * 60 * 5, // 5 mins
+    gcTime: 1000 * 60 * 30, // 30 mins
+  });
 
+  // ✅ Sync data to local state
   useEffect(() => {
-    fetchGenRecord();
-  }, []);
+    if (data) setRows(data);
+  }, [data]);
+
+  // ✅ Handle errors
+  useEffect(() => {
+    if (error) toast.error("Error fetching records: " + error.message);
+  }, [error]);
 
   const uniqueCustomers = Array.from(
     new Set(rows.map((row) => row.customer_name).filter(Boolean))
@@ -109,18 +127,27 @@ export default function ServicesSpreadsheet() {
     setRows(updated);
   };
 
-  // 💾 Save new row
- const saveRow = async (row: any) => {
-  // Remove temporary fields
-  const { editing, backupRow, ...cleanData } = row;
-  const { error } = await supabase.from("general_record").insert([cleanData]);
 
-  if (error) alert("Error saving: " + error.message);
-    else alert("Saved successfully!");
-  };
+  const saveRow = useMutation({
+    mutationFn: async (row: any) => {
+      const { editing, backupRow, ...cleanData } = row;
+      const { error } = await supabase.from("general_record").insert([cleanData]);
+      if (error) throw error;
+      return cleanData;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["general_record"] });
+      toast.success("Saved successfully!");
+      refetch();
+      setSavingId(null);
+    },
+    onError: (err: any) => {
+      toast.error("Error saving: " + err.message);
+      setSavingId(null);
+    },
+  });
 
-  // ❌ Delete row
-   const deleteRow = async (id: string) => {
+  const handleDelete = async (id: string) => {
   const result = await Swal.fire({
     title: "Delete this record?",
     text: "This action cannot be undone.",
@@ -135,23 +162,19 @@ export default function ServicesSpreadsheet() {
   if (!result.isConfirmed) return;
 
   try {
-    const { error } = await supabase.from("general_record").delete().eq("id", id);
-
-    if (error) {
-      toast.error("❌ Delete failed: " + error.message);
-      return;
-    }
-
-    // ✅ Show success toast explicitly
-    toast.success("Record deleted successfully!");
-
-    // ✅ Update the UI
+    setLoadingId(id);
     setRows((prev) => prev.filter((r) => r.id !== id));
+    const { error } = await supabase.from("general_record").delete().eq("id", id);
+    if (error) throw error;
+    toast.success("Record deleted successfully!");
+    queryClient.invalidateQueries({ queryKey: ["general_record"], refetchType: "all" });
   } catch (err: any) {
-    console.error(err);
-    toast.error("Something went wrong while deleting.");
+    toast.error("Delete failed: " + err.message);
+  } finally {
+    setLoadingId(null);
   }
 };
+
 
   // ✏️ Toggle edit mode
   const toggleEdit = (index:any, editing = true) => {
@@ -180,9 +203,9 @@ export default function ServicesSpreadsheet() {
     .update(updateData)
     .eq("id", id);
 
-  if (error) alert("Update failed: " + error.message);
+  if (error) toast.error("Update failed: " + error.message);
     else {
-      alert("Updated successfully!");
+      toast.success("Updated successfully!");
       setRows((prev) =>
         prev.map((r) =>
           r.id === id ? { ...r, editing: false, backupRow: undefined } : r
@@ -212,9 +235,27 @@ export default function ServicesSpreadsheet() {
     return title;
   }, [filterMonth, filterYear]);
 
-  if (loading) return <FullPageLoader text="Loading..." />
+  
+
+  if (isLoading) return <FullPageLoader text="Loading..." />
+  
   return (
     <div className="p-6 text-black">
+      <div className="flex justify-between items-center mb-4">
+        {/* Refresh icon */}
+        <button
+          onClick={() => refetch()}
+          className="text-blue-600 hover:text-blue-800"
+          title="Refresh"
+        >
+          <FiRefreshCw
+            className={`w-6 h-6 transition-transform duration-500 ${
+              isFetching ? "animate-spin" : ""
+            }`}
+          />
+        </button>
+      </div>
+      
       <h2 className="text-lg font-semibold mb-4">{dynamicTitle}</h2>
 
       {/* 🔍 Filter Controls */}
@@ -521,8 +562,8 @@ export default function ServicesSpreadsheet() {
               {/* Actions */}
               <td className="border border-gray-300 px-2">
                 {!row.id ? (
-                  <button onClick={() => saveRow(row)} className="bg-green-600 text-white px-2 py-1 rounded">
-                    Save
+                  <button onClick={() => { saveRow.mutate(row); setSavingId(row.id); }} disabled={savingId === row.id} className={`px-2 py-1 rounded text-white ${saveRow.status === "pending" ? "bg-gray-400" : "bg-blue-600 hover:bg-blue-700"}`}>
+                    {saveRow.status === "pending" ? "Saving..." : "Save"}
                   </button>
                 ) 
                 :
@@ -543,8 +584,8 @@ export default function ServicesSpreadsheet() {
                     <button onClick={() => toggleEdit(rowIndex, true)} className="bg-blue-600 text-white px-2 py-1 rounded">
                       Edit
                     </button>
-                    <button onClick={() => deleteRow(row.id)} className="bg-red-600 text-white px-2 py-1 rounded">
-                      Delete
+                    <button onClick={() => handleDelete(row.id)} disabled={loadingId === row.id} className={`bg-red-600 text-white px-2 py-1 rounded ${loadingId === row.id ? "bg-gray-400" : "bg-red-600 hover:bg-red-700"}`}>
+                      {loadingId === row.id ? "Deleting..." : "Delete"}
                     </button>
                   </div>
                 )}
