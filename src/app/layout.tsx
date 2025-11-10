@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "Ashirov Inventory",
+  title: "Stock-Pilot",
   description: "Offline-ready inventory management app",
   manifest: "/manifest.json",
   themeColor: "#0d6efd",

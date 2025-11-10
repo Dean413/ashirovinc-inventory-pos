@@ -25,14 +25,12 @@
     {
       "src": "/icons/dashboard-wide.png",
       "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide"
+      "type": "image/png"
     },
     {
       "src": "/icons/dashboard-mobile.png",
       "sizes": "540x720",
-      "type": "image/png",
-      "form_factor": "narrow"
+      "type": "image/png"
     }
   ]
 }
