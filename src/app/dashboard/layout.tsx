@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { supabase } from "@/lib/supabaseclient";
 import Sidebar from "@/components/sidebar";
 import Navbar from "@/components/navbar";
-import InstallPWAButton from "@/components/pwa-button";
+
 
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -25,7 +25,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className="flex-1 flex flex-col">
         <Navbar />
         <main className="p-6">{children}</main>
-        <InstallPWAButton />
+      
       </div>
     </div>
   );
