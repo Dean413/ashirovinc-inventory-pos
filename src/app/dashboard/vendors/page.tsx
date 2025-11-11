@@ -3,6 +3,10 @@ import React, { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseclient";
 import Select from "react-select"
 import FullPageLoader from "@/components/page-reloader";
+import { useQuery } from "@tanstack/react-query";
+import { FiRefreshCw } from "react-icons/fi";
+import { toast } from "react-toastify";
+import Swal from "sweetalert2";
 
 interface Record {
   id: number;
@@ -25,147 +29,111 @@ interface Payment {
 }
 
 export default function VendorsPage() {
-  const [records, setRecords] = useState<Record[]>([]);
-  const [payments, setPayments] = useState<Payment[]>([]);
+  const [selectedMonth, setSelectedMonth] = useState<string>("");
+
   const [selectedVendor, setSelectedVendor] = useState<string>("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>("");
+  const [paymentForm, setPaymentForm] = useState({amount: "", type: "sent", description: "",});
+  const [summary, setSummary] = useState({totalGoodsInQty: 0, totalGoodsOutQty: 0, totalCredit: 0, totalDebit: 0, totalSent: 0, totalReceived: 0, balance: 0,});
 
-  const [vendorOptions, setVendorOptions] = useState<{ value: string; label: string }[]>([]);
 
-  // Payment Form State
-  const [paymentForm, setPaymentForm] = useState({
-    amount: "",
-    type: "sent",
-    description: "",
+  // Fetch all vendor goods using React Query
+  const {data: records = [], isLoading: recordsLoading, error: recordsError, refetch: recordsRefetch, isFetching: recordsIsFetching,} = useQuery<Record[]>({
+    queryKey: ["general_record"], 
+    queryFn: async () => {
+      const { data, error } = await supabase.from("general_record") .select("id, customer_name, quantity, service_charge, description, date_in, product_name, category")
+        .or("description.ilike.%GOODS IN%,description.ilike.%GOODS OUT%").order("id", { ascending: true });
+
+      if (error) throw new Error(error.message);
+      return data || [];
+    },
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    gcTime: 1000 * 60 * 60 * 24, // 24 hours
   });
 
-  // Totals
-  const [summary, setSummary] = useState({
-    totalGoodsInQty: 0,
-    totalGoodsOutQty: 0,
-    totalCredit: 0,
-    totalDebit: 0,
-    totalSent: 0,
-    totalReceived: 0,
-    balance: 0,
+  // Fetch all vendor payments using React Query
+  const {data: paymentsData = [], refetch: paymentsRefetch} = useQuery<Payment[]>({
+    queryKey: ["vendor_payments"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("vendor_payments").select("*").order("id", { ascending: true });
+
+      if (error) throw new Error(error.message);
+      return data || [];
+    },
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    gcTime: 1000 * 60 * 60 * 24, // 24 hours
   });
 
-  // Fetch all vendor goods
-  const fetchVendors = async () => {
-    const { data, error } = await supabase
-      .from("general_record")
-      .select(
-        "id, customer_name, quantity, service_charge, description, date_in, product_name, category"
-      )
-      .or("description.ilike.%GOODS IN%,description.ilike.%GOODS OUT%")
-      .order("id", { ascending: true });
-
-    if (error) {
-      console.error("Error fetching records:", error.message);
-      setLoading(false);
-      return;
-    }
-
-    setRecords(data as Record[]);
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    const fetchVendor = async () => {
-      const { data, error } = await supabase.from("general_record").select("id, customer_name");
-      if (error) console.error(error);
-      else {
-        setVendorOptions(
-          data.map((c) => ({
-            value: c.id,
-            label: c.customer_name,
-          }))
-        );
-      }
-    };
-    fetchVendor();
-  }, []); 
-
-  // Fetch vendor payments
-  const fetchPayments = async () => {
-    const { data, error } = await supabase
-      .from("vendor_payments")
-      .select("*")
-      .order("id", { ascending: true });
-
-    if (error) {
-      console.error("Error fetching payments:", error.message);
-      return;
-    }
-
-    setPayments(data as Payment[]);
-  };
-
-  // Add a new payment
+  // Add or Update Payment
   const handleAddOrUpdatePayment = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (!selectedVendor || !paymentForm.amount) {
-    alert("Please select a vendor and enter amount.");
-    return;
-  }
+    e.preventDefault();
 
-  if (editingPayment) {
-    // 🟩 Update existing payment
-    const { error } = await supabase
-      .from("vendor_payments")
-      .update({
-        amount: Number(paymentForm.amount),
-        type: paymentForm.type,
-        description: paymentForm.description,
-      })
-      .eq("id", editingPayment.id);
-
-    if (error) {
-      alert("Error updating payment: " + error.message);
-    } else {
-      alert("Payment updated successfully!");
-      fetchPayments();
-      setEditingPayment(null);
-      setPaymentForm({ amount: "", type: "sent", description: "" });
+    if (!selectedVendor || !paymentForm.amount) {
+      toast.error("Please select a vendor and enter amount.");
+      return;
     }
-  } else {
-    // 🟦 Add new payment
-    const { error } = await supabase.from("vendor_payments").insert([
-      {
-        vendor_name: selectedVendor,
-        amount: Number(paymentForm.amount),
-        type: paymentForm.type,
-        description: paymentForm.description,
-      },
-    ]);
 
-    if (error) {
-      alert("Error adding payment: " + error.message);
-    } else {
-      fetchPayments();
-      setPaymentForm({ amount: "", type: "sent", description: "" });
+    setLoading(true); // start loading
+
+    try {
+      if (editingPayment) {
+        // Update existing payment
+        const { error } = await supabase.from("vendor_payments").update({
+          amount: Number(paymentForm.amount),
+          type: paymentForm.type,
+          description: paymentForm.description,
+        }) .eq("id", editingPayment.id);
+
+        if (error) throw new Error(error.message);
+
+        toast.success("Payment updated successfully!");
+        paymentsRefetch();
+        setEditingPayment(null);
+        setPaymentForm({ amount: "", type: "sent", description: "" });
+      } 
+      else {
+        // Add new payment
+        const { error } = await supabase.from("vendor_payments").insert([
+          {
+            vendor_name: selectedVendor,
+            amount: Number(paymentForm.amount),
+            type: paymentForm.type,
+            description: paymentForm.description,
+          },
+        ]);
+
+        if (error) throw new Error(error.message);
+
+        toast.success("Payment added successfully!");
+        paymentsRefetch();
+        setPaymentForm({ amount: "", type: "sent", description: "" });
+      }
+    } catch (err: any) {
+    toast.error("Error saving payment: " + err.message);
+    } finally {
+    setLoading(false); // stop loading
     }
-  }
-};
+  };
+  paymentsRefetch();
 
-
-  useEffect(() => {
-    fetchVendors();
-    fetchPayments();
-  }, []);
+  
 
   // Filter by vendor
-  const uniqueVendors = Array.from(
-    new Set(records.map((r) => r.customer_name))
-  ).filter(Boolean);
+  const uniqueVendors = Array.from(new Set(records.map((r) => r.customer_name))).filter(Boolean);
+  const uniqueCategories = Array.from(new Set(records.map((r) => r.category))).filter(Boolean);
 
-  const uniqueCategories = Array.from(
-  new Set(records.map((r) => r.category))
-).filter(Boolean);
+// Extract unique months from all records (for dropdown)
+const uniqueMonths = Array.from(
+  new Set(
+    records
+      .filter((r) => r.date_in) // make sure date exists
+      .map((r) => new Date(r.date_in || "").toLocaleString("default", { month: "long", year: "numeric" }))
+  )
+);
 
-  const filteredRecords = records.filter((r) => {
+const filteredRecords = records.filter((r) => {
   const matchVendor = selectedVendor
     ? r.customer_name?.toLowerCase() === selectedVendor.toLowerCase()
     : true;
@@ -174,150 +142,129 @@ export default function VendorsPage() {
     ? r.category?.toLowerCase() === selectedCategory.toLowerCase()
     : true;
 
-  return matchVendor && matchCategory;
+  const matchMonth = selectedMonth
+    ? new Date(r.date_in || "").toLocaleString("default", { month: "long", year: "numeric" }) === selectedMonth
+    : true;
+
+  return matchVendor && matchCategory && matchMonth;
 });
 
 
-  const goodsIn = filteredRecords.filter((r) =>
-    r.description?.toUpperCase().includes("GOODS IN")
-  );
-  const goodsOut = filteredRecords.filter((r) =>
-    r.description?.toUpperCase().includes("GOODS OUT")
-  );
+  // Separate GOODS IN and GOODS OUT
+  const goodsIn = filteredRecords.filter((r) => r.description?.toUpperCase().includes("GOODS IN"));
+  const goodsOut = filteredRecords.filter((r) => r.description?.toUpperCase().includes("GOODS OUT"));
 
-  const filteredPayments = selectedVendor
-    ? payments.filter(
-        (p) => p.vendor_name?.toLowerCase() === selectedVendor.toLowerCase()
-      )
-    : payments;
+  // Filter payments by selected vendor
+  const filteredPayments = selectedVendor ? paymentsData.filter((p) => p.vendor_name?.toLowerCase() === selectedVendor.toLowerCase()) : paymentsData;
 
   useEffect(() => {
-  const totalGoodsInQty = goodsIn.reduce((sum, r) => sum + (r.quantity || 0), 0);
-  const totalGoodsOutQty = goodsOut.reduce((sum, r) => sum + (r.quantity || 0), 0);
+    const totalGoodsInQty = goodsIn.reduce((sum, r) => sum + (r.quantity || 0), 0);
+    const totalGoodsOutQty = goodsOut.reduce((sum, r) => sum + (r.quantity || 0), 0);
+    const totalDebit = goodsIn.reduce((sum, r) => sum + (r.quantity * (r.service_charge || 0)), 0);
+    const totalCredit = goodsOut.reduce((sum, r) => sum + (r.quantity * (r.service_charge || 0)), 0);
 
-  const totalDebit = goodsIn.reduce(
-    (sum, r) => sum + (r.quantity * (r.service_charge || 0)),
-    0
-  );
-  const totalCredit = goodsOut.reduce(
-    (sum, r) => sum + (r.quantity * (r.service_charge || 0)),
-    0
-  );
-
-  // calculate total money sent & received for this vendor
-  const vendorPayments = payments.filter(
-    (p) =>
-      !selectedVendor ||
-      p.vendor_name?.toLowerCase() === selectedVendor.toLowerCase()
-  );
-
-  const totalSent = vendorPayments
-    .filter((p) => p.type === "sent")
-    .reduce((sum, p) => sum + (p.amount || 0), 0);
-
-  const totalReceived = vendorPayments
+    // calculate total money sent & received for this vendor
+    const vendorPayments = paymentsData.filter((p) => !selectedVendor || p.vendor_name?.toLowerCase() === selectedVendor.toLowerCase());
+    const totalSent = vendorPayments.filter((p) => p.type === "sent").reduce((sum, p) => sum + (p.amount || 0), 0);
+    const totalReceived = vendorPayments
     .filter((p) => p.type === "received")
     .reduce((sum, p) => sum + (p.amount || 0), 0);
+    const balance = totalCredit - totalReceived;
 
-  const balance = totalCredit - totalReceived;
+    // only update state if the computed values are different
+    setSummary((prev) => {
+      const newSummary = {totalGoodsInQty, totalGoodsOutQty, totalCredit, totalDebit, totalSent, totalReceived, balance,};
+      
+      // avoid infinite loop by checking if the summary actually changed
+      if (JSON.stringify(prev) !== JSON.stringify(newSummary)) {
+        return newSummary;
+     }
+      return prev;
+    });
+  }, [goodsIn, goodsOut, paymentsData, selectedVendor]);
 
+  // Edit Payment
+  const handleEditPayment = (payment: Payment) => {
+    setEditingPayment(payment);
+    setPaymentForm({
+      amount: payment.amount.toString(),
+      type: payment.type,
+      description: payment.description || "",
+    });
+  };
 
-  // only update state if the computed values are different
-  setSummary((prev) => {
-    const newSummary = {
-      totalGoodsInQty,
-      totalGoodsOutQty,
-      totalCredit,
-      totalDebit,
-      totalSent,
-      totalReceived,
-      balance,
-    };
+  // Delete Payment
+  const handleDeletePayment = async (id: number) => {
+    const result = await Swal.fire({
+      title: "Are you sure?",
+      text: "Do you really want to delete this payment?",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Yes, delete it!",
+      cancelButtonText: "Cancel",
+    });
 
-    // avoid infinite loop by checking if the summary actually changed
-    if (JSON.stringify(prev) !== JSON.stringify(newSummary)) {
-      return newSummary;
+    if (result.isConfirmed) {
+      const { error } = await supabase.from("vendor_payments").delete().eq("id", id);
+
+      if (error) {
+      toast.error("Failed to delete payment: " + error.message);
+      } else {
+        toast.success("Payment has been deleted");
+        paymentsRefetch(); // refresh list
+      }
     }
-    return prev;
-  });
-}, [goodsIn, goodsOut, payments, selectedVendor]);
+  };
 
-
-
-const handleEditPayment = (payment: Payment) => {
-  setEditingPayment(payment);
-  setPaymentForm({
-    amount: payment.amount.toString(),
-    type: payment.type,
-    description: payment.description || "",
-  });
-};
-
-const handleDeletePayment = async (id: number) => {
-  if (!confirm("Are you sure you want to delete this payment?")) return;
-
-  const { error } = await supabase.from("vendor_payments").delete().eq("id", id);
-  if (error) alert("Error deleting payment: " + error.message);
-  else fetchPayments();
-};
-
-
-
-
-  if (loading) return <FullPageLoader text="Loading sales data..." />;
+  if (recordsLoading) return <FullPageLoader text="Loading sales data..." />;
 
   return (
     <div className="p-6 text-black">
+      <div className="flex justify-between items-center mb-4">
+        {/* Refresh icon */}
+        <button onClick={() => recordsRefetch()} className="text-blue-600 hover:text-blue-800" title="Refresh">
+          <FiRefreshCw className={`w-6 h-6 transition-transform duration-500 ${recordsIsFetching ? "animate-spin" : ""}`}/>
+        </button>
+      </div>
       <h1 className="text-2xl font-semibold mb-6">Vendor Transactions Dashboard</h1>
-      
       <div className="mb-6 flex flex-col md:flex-row md:items-center gap-4">
-  {/* Vendor select */}
-  <div className="w-full md:w-1/2">
-    <label className="text-sm font-medium block mb-2">Select Vendor:</label>
-    <Select
-      isClearable
-      isSearchable
-      placeholder="Select a Vendor"
-      value={
-        selectedVendor
-          ? { value: selectedVendor, label: selectedVendor }
-          : null
-      }
-      onChange={(option: any) => setSelectedVendor(option ? option.value : "")}
-      options={uniqueVendors.map((vendor) => ({
-        value: vendor,
-        label: vendor,
-      }))}
-      classNamePrefix="react-select"
-    />
-  </div>
+        {/* Vendor select */}
+        <div className="w-full md:w-1/2">
+          <label className="text-sm font-medium block mb-2">Select Vendor:</label>
+          <Select isClearable isSearchable
+            placeholder="Select a Vendor"
+            value={selectedVendor ? { value: selectedVendor, label: selectedVendor } : null}
+            onChange={(option: any) => setSelectedVendor(option ? option.value : "")}
+            options={uniqueVendors.map((vendor) => ({ value: vendor, label: vendor }))}
+            classNamePrefix="react-select"
+          />
+        </div>
 
-  {/* Category select */}
-  <div className="w-full md:w-1/2">
-    <label className="text-sm font-medium block mb-2">Select Category:</label>
-    <Select
-      isClearable
-      isSearchable
-      placeholder="Select a Category"
-      value={
-        selectedCategory
-          ? { value: selectedCategory, label: selectedCategory }
-          : null
-      }
-      onChange={(option: any) =>
-        setSelectedCategory(option ? option.value : "")
-      }
-      options={uniqueCategories.map((cat) => ({
-        value: cat,
-        label: cat,
-      }))}
-      classNamePrefix="react-select"
-    />
-  </div>
-</div>
+        {/* Category select */}
+        <div className="w-full md:w-1/2">
+          <label className="text-sm font-medium block mb-2">Select Category:</label>
+          <Select isClearable isSearchable
+            placeholder="Select a Category"
+            value={selectedCategory ? { value: selectedCategory, label: selectedCategory } : null}
+            onChange={(option: any) => setSelectedCategory(option ? option.value : "")}
+            options={uniqueCategories.map((cat) => ({ value: cat, label: cat }))}
+            classNamePrefix="react-select"
+          />
+        </div>
 
-  
-
+        <div className="w-full md:w-1/2">
+          <label className="text-sm font-medium block mb-2">Select Month:</label>
+          <Select
+            isClearable
+            isSearchable
+            placeholder="Select a Month"
+            value={selectedMonth ? { value: selectedMonth, label: selectedMonth } : null}
+            onChange={(option: any) => setSelectedMonth(option ? option.value : "")}
+            options={uniqueMonths.map((month) => ({ value: month, label: month }))}
+            classNamePrefix="react-select"
+          />
+        </div>
+      </div>
 
       {/* Summary Section */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 mb-8">
@@ -331,104 +278,82 @@ const handleDeletePayment = async (id: number) => {
         </div>
         <div className="bg-blue-100 border-l-4 border-blue-500 p-4 rounded-lg shadow-sm">
           <h3 className="text-sm text-gray-700">Debit (₦)</h3>
-          <p className="text-lg font-semibold">
-            ₦{summary.totalDebit.toLocaleString("en-NG")}
-          </p>
+          <p className="text-lg font-semibold"> ₦{summary.totalDebit.toLocaleString("en-NG")}</p>
         </div>
         <div className="bg-yellow-100 border-l-4 border-yellow-500 p-4 rounded-lg shadow-sm">
           <h3 className="text-sm text-gray-700">Credit (₦)</h3>
-          <p className="text-lg font-semibold">
-            ₦{summary.totalCredit.toLocaleString("en-NG")}
-          </p>
+          <p className="text-lg font-semibold">₦{summary.totalCredit.toLocaleString("en-NG")}</p>
         </div>
         <div className="bg-purple-100 border-l-4 border-purple-500 p-4 rounded-lg shadow-sm">
           <h3 className="text-sm text-gray-700">Money Sent (₦)</h3>
-          <p className="text-lg font-semibold">
-            ₦{summary.totalSent.toLocaleString("en-NG")}
-          </p>
+          <p className="text-lg font-semibold">₦{summary.totalSent.toLocaleString("en-NG")}</p>
         </div>
         <div className="bg-purple-100 border-l-4 border-purple-500 p-4 rounded-lg shadow-sm">
           <h3 className="text-sm text-gray-700">Money Recieved (₦)</h3>
-          <p className="text-lg font-semibold">
-            ₦{summary.totalReceived.toLocaleString("en-NG")}
-          </p>
+          <p className="text-lg font-semibold"> ₦{summary.totalReceived.toLocaleString("en-NG")}</p>
         </div>
-        <div
-          className={`${
-            summary.totalCredit - summary.totalDebit >= 0
-              ? "bg-green-200 border-green-500"
-              : "bg-red-200 border-red-500"
-          } border-l-4 p-4 rounded-lg shadow-sm`}
-        >
+
+        {/* Net Balance */}
+        <div className={`${summary.totalCredit - summary.totalDebit >= 0? "bg-green-200 border-green-500": "bg-red-200 border-red-500"} border-l-4 p-4 rounded-lg shadow-sm`}>
           <h3 className="text-sm text-gray-700">Net Balance (₦)</h3>
           <p className="text-lg font-semibold">
-                {summary.totalSent > 0 ? (
-            <>
-                ₦{(summary.totalSent + (summary.totalCredit - summary.totalDebit)).toLocaleString("en-NG")}
-            </>
-            ) : summary.totalReceived > 0 ? (
-                <span>
-                ₦{(summary.totalCredit - summary.totalReceived).toLocaleString("en-NG")}
-                </span>
-            )
-            
-            
-            : (
-             <span>
-                ₦{(summary.totalCredit - summary.totalDebit).toLocaleString("en-NG")}
-            </span>
-            )}
-            </p>
+            ₦{(() => {
+              const { totalCredit, totalDebit, totalSent, totalReceived } = summary;
+              const hasSelectedVendor = !!selectedVendor;
+              const hasSelectedMonth = !!selectedMonth;
+              const hasSelectedCategory = !!selectedCategory;
 
+              if (hasSelectedCategory || hasSelectedMonth) {
+                return null
+              }
+
+              if (hasSelectedVendor && totalSent > 0 && totalReceived > 0) {
+                // both sent & received exist for selected vendor
+                return (totalCredit - totalDebit + (totalSent - totalReceived)).toLocaleString("en-NG");
+              }
+
+              if (hasSelectedVendor && totalSent > 0) {
+                return (totalCredit - totalDebit + totalSent).toLocaleString("en-NG");
+              }
+
+              if (hasSelectedVendor && totalReceived > 0) {
+                return (totalCredit - totalDebit - totalReceived).toLocaleString("en-NG");
+              }
+
+              // fallback: either no vendor selected or totals are 0
+              return (totalCredit - totalDebit + (totalSent - totalReceived)).toLocaleString("en-NG");
+            })()}
+          </p>
         </div>
       </div>
 
       {/* Payment Form */}
       {selectedVendor && (
-        <form
-          onSubmit={handleAddOrUpdatePayment}
-          className="bg-gray-50 border border-gray-300 p-4 rounded-lg mb-8"
-        >
+        <form onSubmit={handleAddOrUpdatePayment} className="bg-gray-50 border border-gray-300 p-4 rounded-lg mb-8">
           <h3 className="font-semibold mb-2">Record Payment for {selectedVendor}</h3>
           <div className="flex flex-col md:flex-row gap-3">
-            <input
+            <input className="border border-gray-300 px-3 py-2 rounded-md w-full md:w-1/4"
               type="number"
               placeholder="Amount"
               value={paymentForm.amount}
-              onChange={(e) =>
-                setPaymentForm({ ...paymentForm, amount: e.target.value })
-              }
-              className="border border-gray-300 px-3 py-2 rounded-md w-full md:w-1/4"
+              onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
             />
-            <select
+            <select className="border border-gray-300 px-3 py-2 rounded-md w-full md:w-1/4"
               value={paymentForm.type}
-              onChange={(e) =>
-                setPaymentForm({
-                  ...paymentForm,
-                  type: e.target.value as "sent" | "received",
-                })
-              }
-              className="border border-gray-300 px-3 py-2 rounded-md w-full md:w-1/4"
-            >
+              onChange={(e) => setPaymentForm({...paymentForm, type: e.target.value as "sent" | "received",})}>
               <option value="sent">Money Sent</option>
               <option value="received">Money Received</option>
             </select>
-            <input
+            <input className="border border-gray-300 px-3 py-2 rounded-md w-full md:flex-1"
               type="text"
               placeholder="Description"
               value={paymentForm.description}
-              onChange={(e) =>
-                setPaymentForm({ ...paymentForm, description: e.target.value })
-              }
-              className="border border-gray-300 px-3 py-2 rounded-md w-full md:flex-1"
+              onChange={(e) => setPaymentForm({ ...paymentForm, description: e.target.value })}
             />
-           <button
-  type="submit"
-  className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
->
-  {editingPayment ? "Update Payment" : "Add Payment"}
-</button>
 
+            <button onClick={handleAddOrUpdatePayment} disabled={loading}  className={`btn ${loading ? "opacity-50 cursor-not-allowed" : ""} bg-blue-700 text-white px-4 py-2 rounded-md`}>
+              {loading ? "Saving..." : editingPayment ? "Update Payment" : "Add Payment"}
+            </button>
           </div>
         </form>
       )}
@@ -527,59 +452,42 @@ const handleDeletePayment = async (id: number) => {
       </div>
 
       {/* Payment History */}
-{filteredPayments.length > 0 && (
-  <section className="mt-10">
-    <h2 className="text-lg font-semibold mb-3 text-blue-700">
-      Payment History {selectedVendor && `for ${selectedVendor}`}
-    </h2>
-    <div className="overflow-x-auto bg-white border border-gray-300 rounded-lg">
-      <table className="min-w-full border-collapse text-sm">
-        <thead className="bg-gray-100">
-          <tr>
-            <th className="border border-gray-300 px-3 py-2 text-left">Date</th>
-            <th className="border border-gray-300 px-3 py-2 text-left">Type</th>
-            <th className="border border-gray-300 px-3 py-2 text-right">Amount (₦)</th>
-            <th className="border border-gray-300 px-3 py-2 text-left">Description</th>
-            <th className="border border-gray-300 px-3 py-2 text-center">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filteredPayments.map((p) => (
-            <tr key={p.id} className="hover:bg-gray-50">
-              <td className="border border-gray-300 px-3 py-2">{p.date}</td>
-              <td
-                className={`border border-gray-300 px-3 py-2 ${
-                  p.type === "sent" ? "text-red-600" : "text-green-600"
-                }`}
-              >
-                {p.type === "sent" ? "Money Sent" : "Money Received"}
-              </td>
-              <td className="border border-gray-300 px-3 py-2 text-right">
-                ₦{p.amount.toLocaleString("en-NG")}
-              </td>
-              <td className="border border-gray-300 px-3 py-2">{p.description || "-"}</td>
-              <td className="border border-gray-300 px-3 py-2 text-center">
-                <button
-                  onClick={() => handleEditPayment(p)}
-                  className="text-blue-600 hover:underline mr-3"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => handleDeletePayment(p.id)}
-                  className="text-red-600 hover:underline"
-                >
-                  Delete
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  </section>
-)}
-
+      {filteredPayments.length > 0 && (
+        <section className="mt-10">
+          <h2 className="text-lg font-semibold mb-3 text-blue-700">
+            Payment History {selectedVendor && `for ${selectedVendor}`}
+          </h2>
+          <div className="overflow-x-auto bg-white border border-gray-300 rounded-lg">
+            <table className="min-w-full border-collapse text-sm">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="border border-gray-300 px-3 py-2 text-left">Date</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left">Type</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left">Vendor</th>
+                  <th className="border border-gray-300 px-3 py-2 text-right">Amount (₦)</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left">Description</th>
+                  <th className="border border-gray-300 px-3 py-2 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredPayments.map((p) => (
+                  <tr key={p.id} className="hover:bg-gray-50">
+                    <td className="border border-gray-300 px-3 py-2">{p.date}</td>
+                    <td className={`border border-gray-300 px-3 py-2 ${p.type === "sent" ? "text-red-600" : "text-green-600"}`}>{p.type === "sent" ? "Money Sent" : "Money Received"}</td>
+                    <td className="border border-gray-300 px-3 py-2">{p.vendor_name}</td>
+                    <td className="border border-gray-300 px-3 py-2 text-right"> ₦{p.amount.toLocaleString("en-NG")} </td>
+                    <td className="border border-gray-300 px-3 py-2">{p.description || "-"}</td>
+                    <td className="border border-gray-300 px-3 py-2 text-center">
+                      <button onClick={() => handleEditPayment(p)}  className="text-blue-600 hover:underline mr-3">Edit</button>
+                      <button onClick={() => handleDeletePayment(p.id)} className="text-red-600 hover:underline">Delete</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

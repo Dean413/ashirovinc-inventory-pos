@@ -9,29 +9,32 @@ import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { FiRefreshCcw as Fi, FiRefreshCw } from "react-icons/fi";
- 
 
+interface GeneralRecord {
+  id: number;
+  date_in: string;
+  product_name: string;
+  category: string;
+  customer_name: string;
+  description: string;
+  quantity: number;
+  service_charge: number;
+  payment_method: string;
+  location: string;
+  job_owner: string;
+  serviced_by: string;
+  expense_cost: number;
+  profit: number;
+  staff_commission: number;
+  ashirovs_profit: number;
+  remark: string;
+  date_out: string;
+}
 
 export default function ServicesSpreadsheet() {
   const queryClient = useQueryClient();
-  const headers = [
-    "Date In",
-    "Product",
-    "Category",
-    "Name",
-    "Description",
-    "Qty",
-    "Service Charge",
-    "Payment Method",
-    "Location",
-    "Job Owner",
-    "Serviced By",
-    "Expense Cost",
-    "Profit",
-    "Staff Commission",
-    "Ashirov Profit",
-    "Remark",
-    "Date Out",
+  const headers = ["Date In", "Product", "Category", "Name", "Description", "Qty", "Service Charge", "Payment Method", "Location", "Job Owner", "Serviced By", "Expense Cost", "Profit", 
+    "Staff Commission", "Ashirov Profit", "Remark", "Date Out",
   ];
 
   const remarkOptions = ["Job Done", "Debtor", "Work In Progress", "Delivered"];
@@ -49,20 +52,10 @@ export default function ServicesSpreadsheet() {
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
 
-  const {
-    data,
-    error,
-    isLoading,
-    isFetching,
-    refetch,
-  } = useQuery({
+  const {data, error, isLoading, isFetching, refetch,} = useQuery<GeneralRecord[]>({
     queryKey: ["general-records"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("general_record")
-        .select("*")
-        .order("id");
-
+      const { data, error } = await supabase.from("general_record").select("*").order("id");
       if (error) throw error;
       return data;
     },
@@ -71,18 +64,12 @@ export default function ServicesSpreadsheet() {
   });
 
   // ✅ Sync data to local state
-  useEffect(() => {
-    if (data) setRows(data);
-  }, [data]);
+  useEffect(() => {if (data) setRows(data);}, [data]);
 
   // ✅ Handle errors
-  useEffect(() => {
-    if (error) toast.error("Error fetching records: " + error.message);
-  }, [error]);
+  useEffect(() => {if (error) toast.error("Error fetching records: " + error.message);}, [error]);
 
-  const uniqueCustomers = Array.from(
-    new Set(rows.map((row) => row.customer_name).filter(Boolean))
-  );
+  const uniqueCustomers = Array.from(new Set(rows.map((row) => row.customer_name).filter(Boolean)));
 
   useEffect(() => {
     const fetchData = async () => {
@@ -114,16 +101,12 @@ export default function ServicesSpreadsheet() {
     const expenseCost = parseFloat(updated[index].expense_cost) || 0;
     const profit = serviceCharge - expenseCost;
     updated[index].profit = profit;
-
     const jobOwner = updated[index].job_owner;
     let staffCommission = 0;
-
     if (jobOwner === "In-house") staffCommission = profit * 0.05;
     else if (jobOwner === "Personal") staffCommission = profit * 0.2;
-
     updated[index].staff_commission = staffCommission;
     updated[index].ashirov_profit = profit - staffCommission;
-
     setRows(updated);
   };
 
@@ -131,6 +114,12 @@ export default function ServicesSpreadsheet() {
   const saveRow = useMutation({
     mutationFn: async (row: any) => {
       const { editing, backupRow, ...cleanData } = row;
+      const isEmpty = Object.values(cleanData).every((value) => value === null || value === undefined || value === "");
+
+      if (isEmpty) {
+        throw new Error("Cannot save an empty row");
+      }
+
       const { error } = await supabase.from("general_record").insert([cleanData]);
       if (error) throw error;
       return cleanData;
@@ -148,32 +137,32 @@ export default function ServicesSpreadsheet() {
   });
 
   const handleDelete = async (id: string) => {
-  const result = await Swal.fire({
-    title: "Delete this record?",
-    text: "This action cannot be undone.",
-    icon: "warning",
-    showCancelButton: true,
-    confirmButtonColor: "#dc2626",
-    cancelButtonColor: "#6b7280",
-    confirmButtonText: "Yes, delete it",
-    cancelButtonText: "Cancel",
-  });
+    const result = await Swal.fire({
+      title: "Delete this record?",
+      text: "This action cannot be undone.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#dc2626",
+      cancelButtonColor: "#6b7280",
+      confirmButtonText: "Yes, delete it",
+      cancelButtonText: "Cancel",
+    });
 
-  if (!result.isConfirmed) return;
+    if (!result.isConfirmed) return;
 
-  try {
-    setLoadingId(id);
-    setRows((prev) => prev.filter((r) => r.id !== id));
-    const { error } = await supabase.from("general_record").delete().eq("id", id);
-    if (error) throw error;
-    toast.success("Record deleted successfully!");
-    queryClient.invalidateQueries({ queryKey: ["general_record"], refetchType: "all" });
-  } catch (err: any) {
-    toast.error("Delete failed: " + err.message);
-  } finally {
-    setLoadingId(null);
-  }
-};
+    try {
+      setLoadingId(id);
+      setRows((prev) => prev.filter((r) => r.id !== id));
+      const { error } = await supabase.from("general_record").delete().eq("id", id);
+      if (error) throw error;
+      toast.success("Record deleted successfully!");
+      queryClient.invalidateQueries({ queryKey: ["general_record"], refetchType: "all" });
+    } catch (err: any) {
+      toast.error("Delete failed: " + err.message);
+    } finally {
+      setLoadingId(null);
+    }
+  };
 
 
   // ✏️ Toggle edit mode
@@ -446,16 +435,19 @@ export default function ServicesSpreadsheet() {
 
               {/* Service Charge */}
               <td className="border border-gray-300 px-1 py-0.5 text-right">
-                {row.editing ? (
+                <div className="flex items-center justify-end">
+                  <span className="ml-1">₦</span>
                   <input
                     type="number"
                     value={row.service_charge || ""}
-                    onChange={(e) => handleInputChange(rowIndex, "service_charge", e.target.value)}
-                    className="w-full border-none focus:outline-none text-right"
+                    onChange={(e) =>
+                      handleInputChange(rowIndex, "service_charge", e.target.value)
+                    }
+                    className="w-20 border-none focus:outline-none text-right"
                   />
-                  ) : (<>₦{Number(row.service_charge || 0).toLocaleString("en-NG")}</>)
-                }
+                </div>
               </td>
+
 
               {/* TF */}
               <td className="border border-gray-300 px-1 py-0.5">
@@ -507,16 +499,20 @@ export default function ServicesSpreadsheet() {
                 </select>
               </td>
 
+             
               {/* Expense Cost */}
-              <td className="border border-gray-300 px-1 py-0.5 text-center">
-                {row.editing ? (
+              <td className="border border-gray-300 px-1 py-0.5 text-right">
+                <div className="flex items-center justify-end">
+                  <span className="ml-1">₦</span>
                   <input
                     type="number"
                     value={row.expense_cost || ""}
-                    onChange={(e) => handleInputChange(rowIndex, "expense_cost", e.target.value)}
-                    className="w-full border-none focus:outline-none text-right"
+                    onChange={(e) =>
+                      handleInputChange(rowIndex, "expense_cost", e.target.value)
+                    }
+                    className="w-20 border-none focus:outline-none text-right"
                   />
-                  ) : (<>₦{Number(row.expense_cost || 0.00).toLocaleString("en-NG")}</>)}
+                </div>
               </td>
 
               {/* Profit */}

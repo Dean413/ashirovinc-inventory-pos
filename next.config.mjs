@@ -1,12 +1,10 @@
 // next.config.mjs
 import withPWA from "next-pwa";
 
-const nextConfig = withPWA({
+const pwaConfig = {
   dest: "public",
   register: true,
   skipWaiting: true,
-
-  // ⚙️ Cache your API + pages + static files
   runtimeCaching: [
     {
       // 🔹 Supabase REST API caching
@@ -40,8 +38,12 @@ const nextConfig = withPWA({
       },
     },
   ],
+};
 
+// ✅ Pass pwaConfig *to* withPWA(), then wrap your Next.js config
+const nextConfig = {
   reactStrictMode: true,
-});
+  swcMinify: true,
+};
 
-export default nextConfig;
+export default withPWA(pwaConfig)(nextConfig);

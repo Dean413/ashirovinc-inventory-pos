@@ -7,6 +7,7 @@ const links = [
   { name: "Sales", href: "/dashboard/sales" },
   { name: "Inventory", href: "/dashboard/inventory" },
   { name: "Gen Record", href: "/dashboard/gen-record" },
+  { name: "Vendors", href: "/dashboard/vendors" },
   { name: "Reports", href: "/dashboard/reports" },
  
  
